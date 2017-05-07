@@ -23,9 +23,9 @@ class KrakenAPI extends TickerAPI {
 
   private def callApi(url: String): Either[Error, JsValue] = {
     val json = Json.parse(Source.fromURL(url).mkString)
-    json \ "error" match {
+    (json \ "error").get match {
       case JsArray(err +: _) => Left(new Error("Kraken API error:" + err.toString()))
-      case _ => Right(json \ "result")
+      case _ => Right((json \ "result").get)
     }
   }
 

@@ -1,6 +1,6 @@
 package me.castiel.ticker
 
-import play.api.libs.json.{JsArray, JsValue, Json}
+import play.api.libs.json._
 
 import scala.io.Source
 
@@ -12,8 +12,8 @@ class CoinbaseAPI extends TickerAPI {
   def callApi(url: String): Either[Error, JsValue] = {
     val json = Json.parse(Source.fromURL(url).mkString)
     json \ "errors" match {
-      case JsArray(err +: _) => Left(new Error("Coinbase API error:" + (err(0) \ "message").as[String]))
-      case _ => Right(json \ "data")
+      case JsDefined(JsArray(err +: _)) => Left(new Error("Coinbase API error:" + (err(0) \ "message").as[String]))
+      case JsUndefined() => Right((json \ "data").get)
     }
   }
 
