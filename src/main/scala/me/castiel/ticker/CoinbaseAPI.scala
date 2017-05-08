@@ -3,6 +3,7 @@ package me.castiel.ticker
 import play.api.libs.json._
 
 import scala.io.Source
+import scala.util.{Failure, Success, Try}
 
 /**
   * Created by sebastien on 07/05/2017.
@@ -17,23 +18,23 @@ class CoinbaseAPI extends TickerAPI {
     }
   }
 
-  def getEthBtcValue: Either[Error, Double] = {
+  def getEthBtcValue: Try[Double] = {
     val ethUsdValue = getValueForUrl(getUrl("ETH", "USD"))
     val btcUsdValue = getValueForUrl(getUrl("BTC", "USD"))
     (ethUsdValue, btcUsdValue) match {
-      case (Left(error: Error), _) => Left(error)
-      case (_, Left(error: Error)) => Left(error)
-      case (Right(ethUsd: Double), Right(btcUsd: Double)) => Right(ethUsd / btcUsd)
+      case (Failure(error), _) => Failure(error)
+      case (_, Failure(error)) => Failure(error)
+      case (Success(ethUsd: Double), Success(btcUsd: Double)) => Success(ethUsd / btcUsd)
     }
   }
 
   def getUrl(from: String, to: String): String =
     "https://api.coinbase.com/v2/prices/" + from + "-" + to + "/spot"
 
-  def getValueForUrl(url: String): Either[Error, Double] = {
+  def getValueForUrl(url: String): Try[Double] = {
     callApi(url) match {
-      case Left(error: Error) => Left(error)
-      case Right(data: JsValue) => Right((data \ "amount").as[String].toDouble)
+      case Left(error: Error) => Failure(error)
+      case Right(data: JsValue) => Success((data \ "amount").as[String].toDouble)
     }
   }
 
@@ -42,22 +43,22 @@ class CoinbaseAPI extends TickerAPI {
       if (ticker.from.symbol == "ETH" && ticker.to.symbol == "BTC") getEthBtcValue
       else getValueForUrl(getUrl(ticker.from.symbol, ticker.to.symbol))
     value match {
-      case Left(error: Error) => Left(error)
-      case Right(value: Double) => Right(new TickerValue(ticker, value))
+      case Failure(error) => Failure(error)
+      case Success(value: Double) => Success(new TickerValue(ticker, value))
     }
   }
 
   override def getTickersValues(tickers: List[Ticker]): MaybeTickersValues = {
-    def addTickerValue(tickersValues: Either[Error, List[TickerValue]], ticker: Ticker): MaybeTickersValues =
+    def addTickerValue(tickersValues: MaybeTickersValues, ticker: Ticker): MaybeTickersValues =
       tickersValues match {
-        case Left(_) => tickersValues
-        case Right(tickers: List[TickerValue]) =>
+        case Failure(_) => tickersValues
+        case Success(tickers: List[TickerValue]) =>
           getTickerValue(ticker) match {
-            case Left(error) => Left(error)
-            case Right(tickerValue) => Right(tickers ++ List(tickerValue))
+            case Failure(error) => Failure(error)
+            case Success(tickerValue) => Success(tickers ++ List(tickerValue))
           }
       }
-    tickers.foldLeft[MaybeTickersValues](Right(List()))(addTickerValue)
+    tickers.foldLeft[MaybeTickersValues](Success(List()))(addTickerValue)
   }
 
 }

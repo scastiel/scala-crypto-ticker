@@ -3,6 +3,7 @@ package me.castiel.ticker
 import play.api.libs.json.{JsArray, JsValue, Json}
 
 import scala.io.Source
+import scala.util.{Failure, Success}
 
 /**
   * Created by sebastien on 07/05/2017.
@@ -31,9 +32,9 @@ class KrakenAPI extends TickerAPI {
 
   override def getTickersValues(tickers: List[Ticker]): MaybeTickersValues = {
     callApi(krakenUrlForTickers(tickers)) match {
-      case Left(error: Error) => Left(error)
+      case Left(error: Error) => Failure(error)
       case Right(result: JsValue) =>
-        Right(tickers.map(ticker => {
+        Success(tickers.map(ticker => {
           val value = (result \ krakenTickerSymbol(ticker) \ "c") (0).as[String].toDouble
           new TickerValue(ticker, value)
         }))
@@ -42,7 +43,7 @@ class KrakenAPI extends TickerAPI {
 
   override def getTickerValue(ticker: Ticker): MaybeTickerValue =
     getTickersValues(List(ticker)) match {
-      case Left(error: Error) => Left(error)
-      case Right(List(tickerValue)) => Right(tickerValue)
+      case Failure(error: Error) => Failure(error)
+      case Success(List(tickerValue)) => Success(tickerValue)
     }
 }
