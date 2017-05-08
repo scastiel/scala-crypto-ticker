@@ -1,14 +1,15 @@
 package me.castiel.ticker
 
-import play.api.libs.json.{JsArray, JsValue, Json}
-import dispatch.Defaults._
+import play.api.libs.json.{JsArray, JsValue}
+import play.api.libs.ws.WSClient
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 
 /**
   * Created by sebastien on 07/05/2017.
   */
-class KrakenAPI(http: dispatch.Http) extends TickerAPI {
+class KrakenAPI(client: WSClient) extends TickerAPI {
 
   private val krakenCurrenciesSymbols: Map[String, String] = Map(
     "BTC" -> "XXBT",
@@ -23,13 +24,10 @@ class KrakenAPI(http: dispatch.Http) extends TickerAPI {
     "https://api.kraken.com/0/public/Ticker?pair=" + tickers.map(krakenTickerSymbol).mkString(",")
 
   private def callApi(url: String): Future[JsValue] = {
-    val svc = dispatch.url(url)
-    val response: dispatch.Future[String] = http(svc.OK(dispatch.as.String))
-    response.map(content => {
-      val json = Json.parse(content)
-      (json \ "error").get match {
-        case JsArray(err +: _) => throw new Error("Kraken API error:" + err.toString())
-        case _ => (json \ "result").get
+    client.url(url).get().map(response => {
+      (response.json \ "error").get match {
+        case JsArray(err +: _) => throw new TickerApiException("Kraken API error:" + err.toString())
+        case _ => (response.json \ "result").get
       }
     })
   }

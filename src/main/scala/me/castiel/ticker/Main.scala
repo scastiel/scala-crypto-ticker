@@ -1,5 +1,9 @@
 package me.castiel.ticker
 
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import play.api.libs.ws.ahc.AhcWSClient
+
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -21,9 +25,13 @@ object Main extends App {
     new Ticker(currencies("ETH"), currencies("BTC"))
   )
 
+  implicit val system = ActorSystem()
+  implicit val materializer = ActorMaterializer()
+  val wsClient = AhcWSClient()
+
   val tickerAPIs: Map[String, TickerAPI] = Map(
-    "kraken" -> new KrakenAPI(dispatch.Http),
-    "coinbase" -> new CoinbaseAPI(dispatch.Http)
+    "kraken" -> new KrakenAPI(wsClient),
+    "coinbase" -> new CoinbaseAPI(wsClient)
   )
 
   def listOfFuturesToFutureOfList[T](listOfFutures: Iterable[Future[T]]): Future[Iterable[T]] =
@@ -36,13 +44,13 @@ object Main extends App {
     case (name, tickerApi) => tickerApi.getTickersValues(tickers).map((name, _))
   }))
 
-  tickersValuesFuture onComplete {
-    case Success(tickersValues) =>
-      println(tickersValues)
-      dispatch.Http.shutdown()
-    case Failure(error) =>
-      println("Error: " + error)
-      dispatch.Http.shutdown()
+  tickersValuesFuture andThen {
+    case Success(tickersValues) => println(tickersValues)
+    case Failure(error) => println("Error: " + error.getMessage)
+  } andThen {
+    case _ =>
+      wsClient.close()
+      system.terminate()
   }
 
 }

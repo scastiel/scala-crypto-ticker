@@ -1,23 +1,20 @@
 package me.castiel.ticker
 
 import play.api.libs.json._
-import dispatch.Defaults._
-
+import play.api.libs.ws.WSClient
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /**
   * Created by sebastien on 07/05/2017.
   */
-class CoinbaseAPI(http: dispatch.Http) extends TickerAPI {
+class CoinbaseAPI(client: WSClient) extends TickerAPI {
 
   def callApi(url: String): Future[JsValue] = {
-    val svc = dispatch.url(url)
-    val response: dispatch.Future[String] = http(svc.OK(dispatch.as.String))
-    response.map(content => {
-      val json = Json.parse(content)
-      json \ "errors" match {
-        case JsDefined(JsArray(err +: _)) => throw new Error("Coinbase API error:" + (err(0) \ "message").as[String])
-        case JsUndefined() => (json \ "data").get
+    client.url(url).get().map(response => {
+      response.json \ "errors" match {
+        case JsDefined(JsArray(err +: _)) => throw new TickerApiException("Coinbase API error:" + (err(0) \ "message").as[String])
+        case JsUndefined() => (response.json \ "data").get
       }
     })
   }
