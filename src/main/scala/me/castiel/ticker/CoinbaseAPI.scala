@@ -1,64 +1,49 @@
 package me.castiel.ticker
 
 import play.api.libs.json._
+import dispatch.Defaults._
 
-import scala.io.Source
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.Future
 
 /**
   * Created by sebastien on 07/05/2017.
   */
-class CoinbaseAPI extends TickerAPI {
+class CoinbaseAPI(http: dispatch.Http) extends TickerAPI {
 
-  def callApi(url: String): Either[Error, JsValue] = {
-    val json = Json.parse(Source.fromURL(url).mkString)
-    json \ "errors" match {
-      case JsDefined(JsArray(err +: _)) => Left(new Error("Coinbase API error:" + (err(0) \ "message").as[String]))
-      case JsUndefined() => Right((json \ "data").get)
-    }
+  def callApi(url: String): Future[JsValue] = {
+    val svc = dispatch.url(url)
+    val response: dispatch.Future[String] = http(svc.OK(dispatch.as.String))
+    response.map(content => {
+      val json = Json.parse(content)
+      json \ "errors" match {
+        case JsDefined(JsArray(err +: _)) => throw new Error("Coinbase API error:" + (err(0) \ "message").as[String])
+        case JsUndefined() => (json \ "data").get
+      }
+    })
   }
 
-  def getEthBtcValue: Try[Double] = {
-    val ethUsdValue = getValueForUrl(getUrl("ETH", "USD"))
-    val btcUsdValue = getValueForUrl(getUrl("BTC", "USD"))
-    (ethUsdValue, btcUsdValue) match {
-      case (Failure(error), _) => Failure(error)
-      case (_, Failure(error)) => Failure(error)
-      case (Success(ethUsd: Double), Success(btcUsd: Double)) => Success(ethUsd / btcUsd)
-    }
+  def getEthBtcValue: Future[Double] = {
+    val ethUsdValue: Future[Double] = getValueForUrl(getUrl("ETH", "USD"))
+    val btcUsdValue: Future[Double] = getValueForUrl(getUrl("BTC", "USD"))
+    val ethUsdBtcUsdValues: Future[(Double, Double)] = ethUsdValue.flatMap(ethUsd => btcUsdValue.map(btcUsd => (ethUsd, btcUsd)))
+    ethUsdBtcUsdValues.map(values => values._1 / values._2)
   }
 
   def getUrl(from: String, to: String): String =
     "https://api.coinbase.com/v2/prices/" + from + "-" + to + "/spot"
 
-  def getValueForUrl(url: String): Try[Double] = {
-    callApi(url) match {
-      case Left(error: Error) => Failure(error)
-      case Right(data: JsValue) => Success((data \ "amount").as[String].toDouble)
-    }
-  }
+  def getValueForUrl(url: String): Future[Double] =
+    callApi(url).map(data => (data \ "amount").as[String].toDouble)
 
   def getTickerValue(ticker: Ticker): MaybeTickerValue = {
     val value =
       if (ticker.from.symbol == "ETH" && ticker.to.symbol == "BTC") getEthBtcValue
       else getValueForUrl(getUrl(ticker.from.symbol, ticker.to.symbol))
-    value match {
-      case Failure(error) => Failure(error)
-      case Success(value: Double) => Success(new TickerValue(ticker, value))
-    }
+    value.map(new TickerValue(ticker, _))
   }
 
   override def getTickersValues(tickers: List[Ticker]): MaybeTickersValues = {
-    def addTickerValue(tickersValues: MaybeTickersValues, ticker: Ticker): MaybeTickersValues =
-      tickersValues match {
-        case Failure(_) => tickersValues
-        case Success(tickers: List[TickerValue]) =>
-          getTickerValue(ticker) match {
-            case Failure(error) => Failure(error)
-            case Success(tickerValue) => Success(tickers ++ List(tickerValue))
-          }
-      }
-    tickers.foldLeft[MaybeTickersValues](Success(List()))(addTickerValue)
+    Future.sequence(tickers.map(getTickerValue))
   }
 
 }
