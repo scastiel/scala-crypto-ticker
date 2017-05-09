@@ -1,5 +1,7 @@
 package me.castiel.ticker
 
+import java.math.MathContext
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import play.api.libs.ws.ahc.AhcWSClient
@@ -32,7 +34,18 @@ object Main extends App {
     "coinbase" -> new CoinbaseAPI(wsClient)
   )
 
-  TickerObserver.observableForTickerAPIs(tickerAPIs, tickers, 5 seconds)
-    .subscribe(tickerValues => println(tickerValues))
+  def printTickerValue(source: String, tickerValues: List[TickerValue]): Unit =
+    println(
+      "%s:\n%s".format(
+        source.capitalize,
+        tickerValues.map(tickerValue =>
+          f"• 1 ${tickerValue.ticker.from.symbol} = ${BigDecimal(tickerValue.value).round(new MathContext(3)).toDouble}%6s ${tickerValue.ticker.to.symbol}"
+        ).mkString("\n"))
+    )
+
+  val observable = TickerObserver.observableForTickerAPIs(tickerAPIs, tickers, 5 seconds)
+    .subscribe(pair => pair match {
+      case (source: String, tickerValues: List[TickerValue]) => printTickerValue(source, tickerValues)
+    })
 
 }

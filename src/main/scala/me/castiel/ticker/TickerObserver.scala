@@ -12,6 +12,7 @@ object TickerObserver {
 
   def observableForTickerAPI(tickerAPI: TickerAPI, tickers: List[Ticker], interval: Duration): Observable[List[TickerValue]] =
     Observable.interval(interval)
+      .merge(Observable.just(0l)) // to start right now
       .flatMap(_ => Observable.from(tickerAPI.getTickersValues(tickers)))
 
   def observableForTickerAPIs(tickerAPIs: Map[String, TickerAPI], tickers: List[Ticker], interval: Duration): Observable[(String, List[TickerValue])] =
